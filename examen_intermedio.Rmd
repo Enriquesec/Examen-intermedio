@@ -1,0 +1,137 @@
+---
+output: pdf_document
+header-includes:
+- \usepackage[utf8]{inputenc}
+- \usepackage[T1]{fontenc}
+- \usepackage[spanish]{babel}
+- \usepackage{float}
+---
+\begin{table}[ht]
+\centering
+\begin{tabular}{c}
+\textbf{Examen DS Intermedio}\\
+\textbf{Enrique Santibáñez Cortés} \\
+\end{tabular}
+\end{table}
+
+\begin{center}
+\textbf{Sección B}
+\end{center}
+
+B1.QQP
+
+Descarga la Base de datos histórica de \textbf{Quién es Quién en los Precios} de Profeco y resuelve los siguientes incisos. Para el procesamiento de los datos y análisis exploratorio debes usar Spark SQL en el lenguanje de programación de tu elección.
+
+
+## Hacemos la conección Spark.
+```{r message=F, warning=F}
+#Cargamos los paquetes para los datos
+library(sparklyr)
+library(tidyverse)
+#Configuramos Spark.
+config = spark_config()
+config$`sparklyr.shell.driver-memory` <- "4G"
+config$`sparklyr.shell.executor-memory` <- "4G"
+config$`spark.yarn.executor.memoryOverhead` <- "512"
+#Realizamos la conección y cargamos los datos en Spark.
+sc = spark_connect(master = "local", config = config)
+```
+
+1. Procesamienoo de los datos
+```{r}
+#Leemos los datos.
+setwd("~/Documentos/Servicio_social/Examen intermedio/")
+all_data <- spark_read_csv(sc, name = "air", path = "all_data.csv")
+```
+
+\begin{itemize}
+\item[a)] ¿Cuántos registros hay?
+\end{itemize}
+
+\textbf{Respuesta:}
+
+```{r}
+all_data%>%tally()
+```
+
+\begin{itemize}
+\item[b)] ¿Cuántas categorías?
+\end{itemize}
+
+\textbf{Respuesta:}
+  
+```{r}
+#Y el número total de catedorías es: (RESPUESTA)
+all_data%>%distinct(categoria)%>%arrange(categoria)%>%tally()
+
+#Las principales categorías que más aparecen son:
+head(all_data%>%group_by(categoria)%>%count()%>%arrange(desc(n)))
+```
+
+\begin{itemize}
+\item[c)] ¿Cuántas cadenas comerciales están siendo monitoreadas?
+\end{itemize}
+
+\textbf{Respuesta:}
+
+```{r}
+# En total son: (RESPUESTA)
+all_data%>%distinct(cadenaComercial)%>%tally()
+
+# Cada cadena comercial tiene un número de registros:
+head(all_data%>%group_by(cadenaComercial)%>%count()%>%arrange(desc(n)))
+``` 
+  
+\begin{itemize}
+\item[d)]  ¿Cómo podrías determinar la calidad de los datos? ¿Detectaste algún tipo de incosistencia o error en la fuente?
+\end{itemize}
+
+\textbf{Respuesta:}
+
+Me percate de varios problemas en la fuente. En algunos campos existen NAN los cuales si los eliminamos se reduce la base de datos de 62530715 a 61593556 es decir los datos perdidos son 937159, ahora en los campos estado y municipio existe varias incosistencias como por ejemplo: existe registros con estados \textbf{COL. EDUARDO GUERRA} y otros con \textbf{3 ESQ. SUR 125}, para el municipio de León Guanajuato viene como \textbf{León} y \textbf{"León""}. 
+En los productos también existen incosistencia en la fuente, como por ejemplo: \textbf{Acondicionador Y Enjuague} vs \textbf{Acondicionador / Enjuague}. 
+
+\begin{itemize}
+\item[e)]  ¿Cuáles son los productos más monitoreados en cada entidad?
+\end{itemize}
+ 
+\textbf{Respuesta:}
+
+```{r}
+# El top3 de articulos para cada estado es:
+all_data%>%group_by(estado)%>%count(producto,sort=T)%>%top_n(3)
+```
+
+\begin{itemize}
+\item[f)]  ¿Cuál es la cadena comercial con mayor variead de productos?
+\end{itemize}
+
+\textbf{Respuesta:}
+
+```{r}
+#El top 5 de las cadenas con más variedad de productos son:
+head(all_data%>%select(cadenaComercial,producto)%>%group_by(cadenaComercial)%>%distinct(cadenaComercial,producto)%>%count(sort=T))
+
+#Y los productos son:
+set.seed(1)
+cade<-all_data%>%select(cadenaComercial,producto)%>%filter(cadenaComercial=="SORIANA")%>%distinct(producto)%>%collect()
+sample_n(cade,5)
+```
+
+
+3. Visualización
+\begin{enumerate}
+\item Genera un mapa que nos permita identificar la oferta de categorías en la zona metropolitana de León Guanajuato y el nivel de precios en cada una de ellas. Se darán puntos extra si el mapa es interactivo. 
+\end{enumerate}
+
+\textbf{Respuesta:}
+
+Filtramos los datos que pertenecen a la zona metropolitana de Léon Guanajuato (Nota: solo vienen datos del municiopio de León), y los guardamos en un csv, para así no tener que hacer ese filtro cada vez que se ocupen los datos.
+
+Posteriomente ocuparemos la paquetería Shiny para crear el mapa interactivo, el cuál esta formado: por un mapa, una tabla para la visualización de los datos, y dos \textbf{SelectInput} que controlan el producto y la fecha. Es decir, en el mapa se podrán consultar el precio de las categorías a una fecha específcada. Se consideró que solo mostrará el precio de la categoría con el registro más cerca a la fecha específicada. 
+
+```{r}
+# Nos desconectamos de Spark
+spark_disconnect(sc)
+```
+
