@@ -1,0 +1,81 @@
+---
+output: pdf_document
+---
+2. Análisis exploratorio.
+
+Considero que las respuestas b) y d) tiene diferentes respuesta, depende del enfoque en el cuál se trate de responder o el objetivo del estudio. La primera manera por la cuál se puede abordar es considerar todos los precios mínimos de los productos de la canasta básica, sin tener en cuenta la distribución geoespacial de la tienda (registros). Pero a mi parecer esto puede tener mucho sesgo, debido a que no se toma encuenta la distribución geospacial, puede que sea la ciudad o estado con el precio de la canasta básica más barata o más cara del país pero no se sabe si los precios mínimos estan muy alejados entres si. El segundo enfoque que se me ocurrió es considerar un promedio del los productos de la canasta básica en esa/ese ciudad/estado, y determinar así un total con la suma de todos los promedios de los productos. 
+
+```{r message=F, warning=F}
+#Cargamos los paquetes para los datos
+library(sparklyr)
+library(tidyverse)
+#Configuramos Spark.
+config = spark_config()
+config$`sparklyr.shell.driver-memory` <- "4G"
+config$`sparklyr.shell.executor-memory` <- "4G"
+config$`spark.yarn.executor.memoryOverhead` <- "512"
+#Realizamos la conección y cargamos los datos en Spark.
+sc = spark_connect(master = "local", config = config)
+
+#Leemos los datos. el archivo est_canasta son todos los estados con los 18 productos.
+setwd("~/Documentos/Servicio_social/Examen intermedio/")
+est_canasta <- spark_read_csv(sc, name = "est", path = "est_canasta.csv/")
+```
+
+\begin{itemize}
+\item[a)] Genera una canasta de productos básicos que te permita comparar los precios geográfica y temporalmente. Justifica tu elección y procedimiento.
+\end{itemize}
+
+\textbf{Respuesta:}
+
+Considerando actualmente que la canasta básica esta constituida de 23 a 40 productos de los cuales en el atributo producto se seleccionaron 18 productos: azucar, frijol, arroz, harina de maiz, aceite, atun, sardina, sal modida de mesa, cafe soluble, harina de trigo, pasata para sopa, avena, lenteja, detergente para ropa, detergente para trastes, jabón de tocador, papel higienico y crema dental. Esta selección resulto de la busqueda de todos los productos en los estados o municipios, es decir, se comprobó que en todo los estados estuvieran los 18 productos especificados. Además, para hacer las comparaciones temporales consideramos los analisis apartir de $2014-06-10$, debido a que antes de esa fecha existían productos sin ningún registros en diversos estados y la fecha en el cuál hubo algún cambio fue el $2016-04-29$.
+
+```{r message=F, warning=F}
+canasta<-c("AZUCAR","FRIJOL","ARROZ","HARINA DE MAIZ","ACEITE","ATUN","SARDINA","SAL MOLIDA DE MESA","CAFE SOLUBLE",
+           "HARINA DE TRIGO","PASTA PARA SOPA","AVENA","LENTEJA","DETERGENTE P/ROPA","DETERGENTE P/TRASTES","JABON DE TOCADOR","PAPEL HIGIENICO","CREMA DENTAL")
+
+est_canasta%>%group_by(estado,producto)%>%summarise(min(fechaRegistro))%>%filter(`min(fechaRegistro)`>"2014-06-10")%>%arrange(estado)
+```
+
+\begin{itemize}
+\item[b)] ¿Cuál es la ciudad más cara del país? ¿Cuál es la más barata?
+\end{itemize}
+
+\textbf{Respuesta:}
+
+Se me complico esta pregunta, ¿de todo mexico buscamos la ciudad mas cara y más barata? A nivel ciudad, se me complico debido a que le tenia que asignar a cada ciudad la tienda más cercana en la cuál tuvieran los productos, además de que los resgitros tenían el nombre del municipio y no a nivel ciudad, tenía las coordenadas de la tienda en especifico pero no encontre en internet un shapile con todas las coordenadas de las ciudades de México.
+
+\begin{itemize}
+\item[c)] ¿Hay algún patrón estacional entre años?
+\end{itemize}
+
+\begin{itemize}
+\item[d)] ¿Cuál es el estado más caro y en qué mes?
+\end{itemize}
+
+\textbf{Respuesta:}
+
+```{r message=F, warning=F}
+canasta<-c("AZUCAR","FRIJOL","ARROZ","HARINA DE MAIZ","ACEITE","ATUN","SARDINA","SAL MOLIDA DE MESA","CAFE SOLUBLE",
+           "HARINA DE TRIGO","PASTA PARA SOPA","AVENA","LENTEJA","DETERGENTE P/ROPA","DETERGENTE P/TRASTES","JABON DE TOCADOR","PAPEL HIGIENICO","CREMA DENTAL")
+meses<-seq.Date(from = as.Date("2014-06-10"),to = as.Date("2016-05-10"),by = "month")
+
+#est_canasta<-all_data%>%filter(producto%in%canasta&estado!="COL. EDUARDO GUERRA")%>%na.omit()
+#spark_write_csv(est_canasta,"~/Documentos/Servicio_social/Examen intermedio/est_canasta.csv")
+
+precio_cana<-est_canasta%>%group_by(estado,producto,longitud,latitud)%>%filter(estado!="COL. EDUARDO GUERRA")%>%arrange(fechaRegistro)%>%top_n(1)%>%group_by(estado,producto)%>%summarise(min(precio))%>%arrange(estado)%>%mutate(canasta=sum(`min(precio)`))%>%collect()
+
+head(precio_cana%>%distinct(estado,canasta)%>%arrange(desc(canasta)))
+```
+
+Por lo tanto se observa que en el Baja California Sur tiene los precios más bajos para la canasta. Analizaremos como se comporta durante el tiempo.
+
+\begin{itemize}
+\item[e)] ¿Cuáles son los principales riesgos de hacer análisis de series de tiempo con estos datos?
+\end{itemize}
+
+\textbf{Respuesta:}
+
+Considero que la serie de tiempo se puede ver afectado por la fecha de registros, ya que no todos los productos básicos considerados no tienen el mismo periodo de actualización entre si, por lo que puede influir al realizar el análisis.  
+
+Otra detalle importante es que se calculo el precio minimo de la de los productos básicos, pero no se tomo encuenta si los productos tenían la misma presentación.
